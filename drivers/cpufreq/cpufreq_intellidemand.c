@@ -2052,6 +2052,7 @@ static void dbs_input_event(struct input_handle *handle, unsigned int type,
 static int input_dev_filter(const char *input_dev_name)
 {
 	if (strstr(input_dev_name, "touchscreen") ||
+ 	    strstr(input_dev_name, "synaptics_dsx_i2c") ||
  	    strstr(input_dev_name, "touch_dev") ||
  	    strstr(input_dev_name, "sec-touchscreen") ||
 	    strstr(input_dev_name, "keypad")) {
