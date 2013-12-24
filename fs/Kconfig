@@ -285,9 +285,10 @@ source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
 
 config ASYNC_FSYNC
-	bool
-	string "asynchronous fsync"
+	bool "asynchronous fsync"
 	default y
+	help
+	  Async Fsync from HTC Kernels
 
 config DYNAMIC_FSYNC
 	bool "dynamic file sync control"
