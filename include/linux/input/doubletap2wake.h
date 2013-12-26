@@ -21,6 +21,7 @@
 #ifndef _LINUX_DOUBLETAP2WAKE_H
 #define _LINUX_DOUBLETAP2WAKE_H
 
+extern bool dt2w_scr_suspended;
 extern int dt2w_switch;
 
 #endif	/* _LINUX_DOUBLETAP2WAKE_H */

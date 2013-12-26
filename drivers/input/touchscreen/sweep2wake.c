@@ -57,29 +57,19 @@ MODULE_LICENSE("GPLv2");
 #define S2W_S2SONLY_DEFAULT	0
 #define S2W_PWRKEY_DUR          60
 
-#ifdef CONFIG_MACH_MSM8974_HAMMERHEAD
-/* Hammerhead aka Nexus 5 */
-#define DEFAULT_S2W_Y_MAX               1920
-#define DEFAULT_S2W_X_MAX               1080
-#define DEFAULT_S2W_Y_LIMIT             DEFAULT_S2W_Y_MAX-130
-#define DEFAULT_S2W_X_B1                400
-#define DEFAULT_S2W_X_B2                700
-#define DEFAULT_S2W_X_FINAL             250
-#else
-/* defaults */
-#define DEFAULT_S2W_Y_LIMIT             2350
-#define DEFAULT_S2W_X_MAX               1540
-#define DEFAULT_S2W_X_B1                500
-#define DEFAULT_S2W_X_B2                1000
-#define DEFAULT_S2W_X_FINAL             300
-#endif
-
+#define DEFAULT_S2W_Y_MAX               1280
+#define DEFAULT_S2W_X_MAX               720
+#define DEFAULT_S2W_Y_LIMIT             DEFAULT_S2W_Y_MAX-100
+#define DEFAULT_S2W_X_B1                130
+#define DEFAULT_S2W_X_B2                360
+#define DEFAULT_S2W_X_FINAL             160
 
 /* Resources */
 int s2w_switch = S2W_DEFAULT, s2w_s2sonly = S2W_S2SONLY_DEFAULT;
+bool s2w_scr_suspended = false;
 static int touch_x = 0, touch_y = 0;
 static bool touch_x_called = false, touch_y_called = false;
-static bool scr_suspended = false, exec_count = true;
+static bool exec_count = true;
 static bool scr_on_touch = false, barrier[2] = {false, false};
 //static struct notifier_block s2w_lcd_notif;
 static struct input_dev * sweep2wake_pwrdev;
@@ -148,7 +138,7 @@ static void detect_sweep2wake(int sweep_coord, int sweep_height, bool st)
 	bool single_touch = st;
 #if S2W_DEBUG
         pr_info(LOGTAG"x,y(%4d,%4d) single:%s\n",
-                x, y, (single_touch) ? "true" : "false");
+                sweep_coord, sweep_height, (single_touch) ? "true" : "false");
 #endif
 	if (s2w_swap_coord == 1) {
 		//swap the coordinate system
@@ -160,7 +150,7 @@ static void detect_sweep2wake(int sweep_coord, int sweep_height, bool st)
 	}
 
 	//power on
-	if ((single_touch) && (scr_suspended == true) && (s2w_switch > 0)) {
+	if ((single_touch) && (s2w_scr_suspended == true) && (s2w_switch > 0)) {
 		prev_coord = 0;
 		next_coord = s2w_start_posn;
 		if ((barrier[0] == true) ||
@@ -186,7 +176,7 @@ static void detect_sweep2wake(int sweep_coord, int sweep_height, bool st)
 			}
 		}
 	//power off
-	} else if ((single_touch) && (scr_suspended == false) && (s2w_switch > 0)) {
+	} else if ((single_touch) && (s2w_scr_suspended == false) && (s2w_switch > 0)) {
 		if (s2w_swap_coord == 1) {
 			//swap back for off scenario ONLY
 			swap_temp1 = sweep_coord;
@@ -406,7 +396,8 @@ static void s2w_input_event(struct input_handle *handle, unsigned int type,
 }
 
 static int input_dev_filter(struct input_dev *dev) {
-	if (strstr(dev->name, "touch")) {
+	if (strstr(dev->name, "touch") ||
+	    strstr(dev->name, "synaptics_dsx_i2c")) {
 		return 0;
 	} else {
 		return 1;
@@ -466,11 +457,11 @@ static struct input_handler s2w_input_handler = {
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void s2w_early_suspend(struct early_suspend *h) {
-	scr_suspended = true;
+	s2w_scr_suspended = true;
 }
 
 static void s2w_late_resume(struct early_suspend *h) {
-	scr_suspended = false;
+	s2w_scr_suspended = false;
 }
 
 static struct early_suspend s2w_early_suspend_handler = {
