@@ -458,6 +458,13 @@ config ZSWAP
 	  swap devices resulting in reduced I/O and faster performance
 	  for many workloads.
 
+config ZSWAP_ENABLE_WRITEBACK
+	bool "zswap writeback"
+	depends on ZSWAP
+	default n
+	help
+	  enable zswap writeback capabilities
+
 config DIRECT_RECLAIM_FILE_PAGES_ONLY
 	bool "Reclaim file pages only"
 	default n
