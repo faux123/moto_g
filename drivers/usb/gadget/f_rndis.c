@@ -25,7 +25,6 @@
 #include "u_ether.h"
 #include "rndis.h"
 
-
 /*
  * This function is an RNDIS Ethernet port -- a Microsoft protocol that's
  * been promoted instead of the standard CDC Ethernet.  The published RNDIS
@@ -67,10 +66,22 @@
  *   - MS-Windows drivers sometimes emit undocumented requests.
  */
 
+static unsigned int rndis_dl_max_pkt_per_xfer = 3;
+module_param(rndis_dl_max_pkt_per_xfer, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(rndis_dl_max_pkt_per_xfer,
+	"Maximum packets per transfer for DL aggregation");
+
+static unsigned int rndis_ul_max_pkt_per_xfer = 3;
+module_param(rndis_ul_max_pkt_per_xfer, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(rndis_ul_max_pkt_per_xfer,
+	"Maximum packets per transfer for UL aggregation");
+
 struct f_rndis {
 	struct gether			port;
 	u8				ctrl_id, data_id;
 	u8				ethaddr[ETH_ALEN];
+	u32				vendorID;
+	const char			*manufacturer;
 	int				config;
 
 	struct usb_ep			*notify;
@@ -406,11 +417,18 @@ static void rndis_response_available(void *_rndis)
 static void rndis_response_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_rndis			*rndis = req->context;
-	struct usb_composite_dev	*cdev = rndis->port.func.config->cdev;
+	struct usb_composite_dev	*cdev;
 	int				status = req->status;
 
+	if (WARN_ON(!rndis))
+		return;
+
+	if (!rndis->port.func.config || !rndis->port.func.config->cdev)
+		return;
+	else
+		cdev = rndis->port.func.config->cdev;
+
 	/* after TX:
-	 *  - USB_CDC_GET_ENCAPSULATED_RESPONSE (ep0/control)
 	 *  - RNDIS_RESPONSE_AVAILABLE (status/irq)
 	 */
 	switch (status) {
@@ -425,9 +443,6 @@ static void rndis_response_complete(struct usb_ep *ep, struct usb_request *req)
 			req->actual, req->length);
 		/* FALLTHROUGH */
 	case 0:
-		if (ep != rndis->notify)
-			break;
-
 		/* handle multiple pending RNDIS_RESPONSE_AVAILABLE
 		 * notifications by resending until we're done
 		 */
@@ -445,8 +460,14 @@ static void rndis_response_complete(struct usb_ep *ep, struct usb_request *req)
 static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_rndis			*rndis = req->context;
-	struct usb_composite_dev	*cdev = rndis->port.func.config->cdev;
+	struct usb_composite_dev	*cdev;
 	int				status;
+	rndis_init_msg_type		*buf;
+
+	if (!rndis->port.func.config || !rndis->port.func.config->cdev)
+		return;
+	else
+		cdev = rndis->port.func.config->cdev;
 
 	/* received RNDIS command from USB_CDC_SEND_ENCAPSULATED_COMMAND */
 //	spin_lock(&dev->lock);
@@ -454,6 +475,21 @@ static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 	if (status < 0)
 		ERROR(cdev, "RNDIS command error %d, %d/%d\n",
 			status, req->actual, req->length);
+
+	buf = (rndis_init_msg_type *)req->buf;
+
+	if (buf->MessageType == REMOTE_NDIS_INITIALIZE_MSG) {
+		if (buf->MaxTransferSize > 2048)
+			rndis->port.multi_pkt_xfer = 1;
+		else
+			rndis->port.multi_pkt_xfer = 0;
+		DBG(cdev, "%s: MaxTransferSize: %d : Multi_pkt_txr: %s\n",
+				__func__, buf->MaxTransferSize,
+				rndis->port.multi_pkt_xfer ? "enabled" :
+							    "disabled");
+		if (rndis_dl_max_pkt_per_xfer <= 1)
+			rndis->port.multi_pkt_xfer = 0;
+	}
 //	spin_unlock(&dev->lock);
 }
 
@@ -499,8 +535,6 @@ rndis_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 			buf = rndis_get_next_response(rndis->config, &n);
 			if (buf) {
 				memcpy(req->buf, buf, n);
-				req->complete = rndis_response_complete;
-				req->context = rndis;
 				rndis_free_response(rndis->config, buf);
 				value = n;
 			}
@@ -767,13 +801,12 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 
 	rndis_set_param_medium(rndis->config, NDIS_MEDIUM_802_3, 0);
 	rndis_set_host_mac(rndis->config, rndis->ethaddr);
+	rndis_set_max_pkt_xfer(rndis->config, rndis_ul_max_pkt_per_xfer);
 
-#if 0
-// FIXME
-	if (rndis_set_param_vendor(rndis->config, vendorID,
-				manufacturer))
-		goto fail0;
-#endif
+	if (rndis->manufacturer && rndis->vendorID &&
+			rndis_set_param_vendor(rndis->config, rndis->vendorID,
+					       rndis->manufacturer))
+		goto fail;
 
 	/* NOTE:  all that is done without knowing or caring about
 	 * the network link ... which is unavailable to this code
@@ -855,19 +888,26 @@ static inline bool can_support_rndis(struct usb_configuration *c)
 int
 rndis_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 {
+	return rndis_bind_config_vendor(c, ethaddr, 0, NULL);
+}
+
+int
+rndis_bind_config_vendor(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
+				u32 vendorID, const char *manufacturer)
+{
 	struct f_rndis	*rndis;
 	int		status;
 
 	if (!can_support_rndis(c) || !ethaddr)
 		return -EINVAL;
 
+	/* setup RNDIS itself */
+	status = rndis_init();
+	if (status < 0)
+		return status;
+
 	/* maybe allocate device-global string IDs */
 	if (rndis_string_defs[0].id == 0) {
-
-		/* ... and setup RNDIS itself */
-		status = rndis_init();
-		if (status < 0)
-			return status;
 
 		/* control interface label */
 		status = usb_string_id(c->cdev);
@@ -898,6 +938,8 @@ rndis_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 		goto fail;
 
 	memcpy(rndis->ethaddr, ethaddr, ETH_ALEN);
+	rndis->vendorID = vendorID;
+	rndis->manufacturer = manufacturer;
 
 	/* RNDIS activates when the host changes this filter */
 	rndis->port.cdc_filter = 0;
@@ -906,6 +948,8 @@ rndis_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 	rndis->port.header_len = sizeof(struct rndis_packet_msg_type);
 	rndis->port.wrap = rndis_add_header;
 	rndis->port.unwrap = rndis_rm_hdr;
+	rndis->port.ul_max_pkts_per_xfer = rndis_ul_max_pkt_per_xfer;
+	rndis->port.dl_max_pkts_per_xfer = rndis_dl_max_pkt_per_xfer;
 
 	rndis->port.func.name = "rndis";
 	rndis->port.func.strings = rndis_strings;

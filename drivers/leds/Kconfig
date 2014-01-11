@@ -40,6 +40,13 @@ config LEDS_ATMEL_PWM
 	  This option enables support for LEDs driven using outputs
 	  of the dedicated PWM controller found on newer Atmel SOCs.
 
+config LEDS_LM2755
+	tristate "LM2755 LED driver support"
+	depends on LEDS_CLASS
+	depends on I2C
+	help
+	  This option enables support for LM2755 RGB LED driver.
+
 config LEDS_LM3530
 	tristate "LCD Backlight driver for LM3530"
 	depends on LEDS_CLASS
@@ -146,6 +153,16 @@ config LEDS_PCA9532_GPIO
 	  To use a pin as gpio pca9532_type in pca9532_platform data needs to
 	  set to PCA9532_TYPE_GPIO.
 
+config LEDS_LM3556
+	  tristate "LM3556 driver"
+	  depends on LEDS_CLASS && I2C
+	help
+	 This option enables support for the LM3556 LED controller. LM3556 is
+	 a fixed frequency synchronous Boost flash driver, can be used as Camera
+	 Flash, Torch, Message Indicator.
+	 This Driver provides direct control via LED class and interface for
+	 programming the controller.
+
 config LEDS_GPIO
 	tristate "LED Support for GPIO connected LEDs"
 	depends on LEDS_CLASS
@@ -156,6 +173,44 @@ config LEDS_GPIO
 	  and they must be connected to the GPIO lines.  The LEDs must be
 	  defined as platform devices and/or OpenFirmware platform devices.
 	  The code to use these bindings can be selected below.
+
+config LEDS_MSM_PDM
+	tristate "LED Support through PDM"
+	depends on LEDS_CLASS
+	help
+	  This option enables support for the LEDs operated through Pulse
+	  Denisty Modulation.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called leds-msm-pdm.
+
+config LEDS_PMIC_MPP
+        tristate "LED Support for Qualcomm PMIC MPP connected LEDs"
+        depends on LEDS_CLASS && MSM_SMD
+        help
+          This option enables support for LEDs connected to  PMIC MPPs
+	  on Qualcomm reference boards.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called leds-pmic-mpp.
+
+config LEDS_MSM_TRICOLOR
+        tristate "LED Support for Qualcomm tricolor LEDs"
+        depends on LEDS_CLASS && MSM_SMD
+        help
+          This option enables support for tricolor LEDs connected to
+	  to Qualcomm reference boards. Red, green and blue color leds
+	  are supported. These leds are turned on/off, blink on/off
+	  by Modem upon receiving command through rpc from this driver.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called leds-msm-tricolor.
 
 config LEDS_LP3944
 	tristate "LED Support for N.S. LP3944 (Fun Light) I2C chip"
@@ -168,6 +223,12 @@ config LEDS_LP3944
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called leds-lp3944.
+
+config LEDS_CPLD
+	tristate "LED Support for CPLD connected LEDs"
+	depends on LEDS_CLASS
+	help
+	  This option enables support for the LEDs connected to CPLD
 
 config LEDS_LP5521
 	tristate "LED Support for N.S. LP5521 LED driver chip"
@@ -227,6 +288,17 @@ config LEDS_PCA955X
 	  LED driver chips accessed via the I2C bus.  Supported
 	  devices include PCA9550, PCA9551, PCA9552, and PCA9553.
 
+config LEDS_PM8XXX
+	tristate "LED Support for Qualcomm PMIC8XXX"
+	depends on MFD_PM8XXX
+	help
+	  This option enables support for LEDs connected over PMIC8XXX
+	  (Power Management IC) chip on Qualcomm reference boards,
+	  for example SURF and FFAs.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called leds-pmic8xxx.
+
 config LEDS_PCA9633
 	tristate "LED support for PCA9633 I2C chip"
 	depends on LEDS_CLASS
@@ -234,6 +306,36 @@ config LEDS_PCA9633
 	help
 	  This option enables support for LEDs connected to the PCA9633
 	  LED driver chip accessed via the I2C bus.
+
+config LEDS_QPNP
+	tristate "Support for QPNP LEDs"
+	depends on SPMI && OF_SPMI
+	help
+	  This driver supports the leds functionality of Qualcomm PNP PMIC.  It
+	  includes RGB Leds, WLED and Flash Led.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called leds-qpnp.
+
+config LEDS_MSM_GPIO_FLASH
+	tristate "Support for GPIO Flash LEDs"
+	depends on GPIO_MSM_V3
+	help
+	  This driver supports the leds functionality of GPIO Flash LED. It
+	  includes flash mode and torch mode.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called leds-gpio-flash.
+
+config LEDS_QPNP_RGB
+	tristate "Support for QPNP LEDs"
+	depends on SPMI && OF_SPMI
+	help
+	  This driver supports the leds functionality of Qualcomm PNP PMIC.
+	  It supports Motorola breathing feature.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called leds-qpn-rgb.
 
 config LEDS_WM831X_STATUS
 	tristate "LED support for status LEDs on WM831x PMICs"
@@ -274,6 +376,12 @@ config LEDS_PWM
 	help
 	  This option enables support for pwm driven LEDs
 
+config LEDS_PM8XXX_RGB
+	tristate "Support for PMIC breathing RGB LED"
+	depends on LEDS_CLASS
+	help
+	 This option enables support for PMIC breathing RGB LED
+
 config LEDS_REGULATOR
 	tristate "REGULATOR driven LED support"
 	depends on LEDS_CLASS
@@ -288,6 +396,24 @@ config LEDS_BD2802
 	help
 	  This option enables support for BD2802GU RGB LED driver chips
 	  accessed via the I2C bus.
+
+config LEDS_MSM_PMIC
+        tristate "LED Support for Qualcomm PMIC connected LEDs"
+        default n
+        depends on ARCH_MSM
+        help
+          This option enables support for LEDs connected over PMIC
+          (Power Management IC) chip on Qualcomm reference boards,
+          for example SURF and FFAs.
+
+config LEDS_PMIC8058
+	tristate "LED Support for Qualcomm PMIC8058"
+	default n
+	depends on PMIC8058
+	help
+	  This option enables support for LEDs connected over PMIC8058
+	  (Power Management IC) chip on Qualcomm reference boards,
+	  for example SURF and FFAs.
 
 config LEDS_INTEL_SS4200
 	tristate "LED driver for Intel NAS SS4200 series"
@@ -334,6 +460,14 @@ config LEDS_MC13783
 	help
 	  This option enable support for on-chip LED drivers found
 	  on Freescale Semiconductor MC13783 PMIC.
+
+config LEDS_QCIBL
+	tristate "LED Support for Quanta LCD backlight"
+	depends on SENSORS_WPCE775X && ARCH_MSM_SCORPION
+	default n
+	help
+	  Say Y here if you want to use the Quanta backlight driver for ST15
+	  platform.
 
 config LEDS_NS2
 	tristate "LED support for Network Space v2 GPIO LEDs"
@@ -401,6 +535,15 @@ config LEDS_OT200
 	  This option enables support for the LEDs on the Bachmann OT200.
 	  Say Y to enable LEDs on the Bachmann OT200.
 
+config LEDS_FAN5646
+	tristate "Fairchild FAN5646 LED Driver"
+	depends on LEDS_CLASS
+	help
+	  Fairchild Semiconductor International FAN5646 LED Driver.
+	  Driver uses gpio line for bit bang control protocol.
+	  Blink and brightness interfaces are supported.
+	  Fixed power supply is supported.
+
 config LEDS_TRIGGERS
 	bool "LED Trigger support"
 	depends on LEDS_CLASS
@@ -467,6 +610,12 @@ config LEDS_TRIGGER_DEFAULT_ON
 	help
 	  This allows LEDs to be initialised in the ON state.
 	  If unsure, say Y.
+
+config LEDS_TRIGGER_SLEEP
+	tristate "LED Sleep Mode Trigger"
+	depends on LEDS_TRIGGERS && HAS_EARLYSUSPEND
+	help
+	  This turns LEDs on when the screen is off but the cpu still running.
 
 comment "iptables trigger is under Netfilter config (LED target)"
 	depends on LEDS_TRIGGERS

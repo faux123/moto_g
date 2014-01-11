@@ -142,6 +142,8 @@ extern unsigned long nr_iowait(void);
 extern unsigned long nr_iowait_cpu(int cpu);
 extern unsigned long this_cpu_load(void);
 
+extern void sched_update_nr_prod(int cpu, unsigned long nr, bool inc);
+extern void sched_get_nr_running_avg(int *avg, int *iowait_avg);
 
 extern void calc_global_load(unsigned long ticks);
 
@@ -279,6 +281,19 @@ static inline void select_nohz_load_balancer(int stop_tick) { }
 static inline void set_cpu_sd_state_idle(void) { }
 #endif
 
+/*
+ * Threads filter bitmask.
+ * Bit 0, for kthreads dump.
+ * Bit 1, for userspace threads dump.
+*/
+#define SHOW_KTHREADS   (1 << 0)
+#define SHOW_APP_THREADS        (1 << 1)
+
+/*
+ * Only dump TASK_* and SHOW_* tasks. (0, 3) for all tasks.
+ */
+extern void show_state_thread_filter(unsigned long state_filter,
+				unsigned long threads_filter);
 /*
  * Only dump TASK_* tasks. (0 for all tasks)
  */
@@ -1318,6 +1333,9 @@ struct task_struct {
 #endif
 
 	struct list_head tasks;
+#ifdef CONFIG_ANDROID_LMK_ADJ_RBTREE
+	struct rb_node adj_node;
+#endif
 #ifdef CONFIG_SMP
 	struct plist_node pushable_tasks;
 #endif
@@ -1663,6 +1681,13 @@ static inline struct pid *task_tgid(struct task_struct *task)
 	return task->group_leader->pids[PIDTYPE_PID].pid;
 }
 
+#ifdef CONFIG_ANDROID_LMK_ADJ_RBTREE
+extern void add_2_adj_tree(struct task_struct *task);
+extern void delete_from_adj_tree(struct task_struct *task);
+#else
+static inline void add_2_adj_tree(struct task_struct *task) { }
+static inline void delete_from_adj_tree(struct task_struct *task) { }
+#endif
 /*
  * Without tasklist or rcu lock it is not safe to dereference
  * the result of task_pgrp/task_session even if task == current,
@@ -1801,6 +1826,9 @@ static inline void put_task_struct(struct task_struct *t)
 extern void task_times(struct task_struct *p, cputime_t *ut, cputime_t *st);
 extern void thread_group_times(struct task_struct *p, cputime_t *ut, cputime_t *st);
 
+extern int task_free_register(struct notifier_block *n);
+extern int task_free_unregister(struct notifier_block *n);
+
 /*
  * Per process flags
  */
@@ -1816,6 +1844,7 @@ extern void thread_group_times(struct task_struct *p, cputime_t *ut, cputime_t *
 #define PF_MEMALLOC	0x00000800	/* Allocating memory */
 #define PF_NPROC_EXCEEDED 0x00001000	/* set_user noticed that RLIMIT_NPROC was exceeded */
 #define PF_USED_MATH	0x00002000	/* if unset the fpu must be initialized before use */
+#define PF_WAKE_UP_IDLE 0x00004000	/* try to wake up on an idle CPU */
 #define PF_NOFREEZE	0x00008000	/* this thread should not be frozen */
 #define PF_FROZEN	0x00010000	/* frozen for system suspend */
 #define PF_FSTRANS	0x00020000	/* inside a filesystem transaction */
@@ -1933,6 +1962,21 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p,
 }
 #endif
 
+static inline void set_wake_up_idle(bool enabled)
+{
+	if (enabled)
+		current->flags |= PF_WAKE_UP_IDLE;
+	else
+		current->flags &= ~PF_WAKE_UP_IDLE;
+}
+#ifdef CONFIG_NO_HZ
+void calc_load_enter_idle(void);
+void calc_load_exit_idle(void);
+#else
+static inline void calc_load_enter_idle(void) { }
+static inline void calc_load_exit_idle(void) { }
+#endif /* CONFIG_NO_HZ */
+
 #ifndef CONFIG_CPUMASK_OFFSTACK
 static inline int set_cpus_allowed(struct task_struct *p, cpumask_t new_mask)
 {
@@ -2027,6 +2071,7 @@ extern unsigned int sysctl_sched_latency;
 extern unsigned int sysctl_sched_min_granularity;
 extern unsigned int sysctl_sched_wakeup_granularity;
 extern unsigned int sysctl_sched_child_runs_first;
+extern unsigned int sysctl_sched_wake_to_idle;
 
 enum sched_tunable_scaling {
 	SCHED_TUNABLESCALING_NONE,
@@ -2289,7 +2334,7 @@ static inline void mmdrop(struct mm_struct * mm)
 }
 
 /* mmput gets rid of the mappings and all user-space */
-extern void mmput(struct mm_struct *);
+extern int mmput(struct mm_struct *);
 /* Grab a reference to a task's mm, if it is not already going away */
 extern struct mm_struct *get_task_mm(struct task_struct *task);
 /*
@@ -2684,7 +2729,16 @@ static inline void thread_group_cputime_init(struct signal_struct *sig)
 extern void recalc_sigpending_and_wake(struct task_struct *t);
 extern void recalc_sigpending(void);
 
-extern void signal_wake_up(struct task_struct *t, int resume_stopped);
+extern void signal_wake_up_state(struct task_struct *t, unsigned int state);
+
+static inline void signal_wake_up(struct task_struct *t, bool resume)
+{
+	signal_wake_up_state(t, resume ? TASK_WAKEKILL : 0);
+}
+static inline void ptrace_signal_wake_up(struct task_struct *t, bool resume)
+{
+	signal_wake_up_state(t, resume ? __TASK_TRACED : 0);
+}
 
 /*
  * Wrappers for p->thread_info->cpu access. No-op on UP.
@@ -2710,6 +2764,11 @@ static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
 }
 
 #endif /* CONFIG_SMP */
+
+extern struct atomic_notifier_head migration_notifier_head;
+#ifdef CONFIG_ANDROID_BG_SCAN_MEM
+extern struct raw_notifier_head bgtsk_migration_notifier_head;
+#endif
 
 extern long sched_setaffinity(pid_t pid, const struct cpumask *new_mask);
 extern long sched_getaffinity(pid_t pid, struct cpumask *mask);

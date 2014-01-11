@@ -17,6 +17,7 @@
 #include <linux/ctype.h>
 #include <linux/genhd.h>
 #include <linux/blktrace_api.h>
+#include <linux/apanic_mmc.h>
 
 #include "partitions/check.h"
 
@@ -216,10 +217,22 @@ static void part_release(struct device *dev)
 	kfree(p);
 }
 
+static int part_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+	struct hd_struct *part = dev_to_part(dev);
+	apanic_mmc_partition_add(part);
+
+	add_uevent_var(env, "PARTN=%u", part->partno);
+	if (part->info && part->info->volname[0])
+		add_uevent_var(env, "PARTNAME=%s", part->info->volname);
+	return 0;
+}
+
 struct device_type part_type = {
 	.name		= "partition",
 	.groups		= part_attr_groups,
 	.release	= part_release,
+	.uevent		= part_uevent,
 };
 
 static void delete_partition_rcu_cb(struct rcu_head *head)
@@ -248,6 +261,8 @@ void delete_partition(struct gendisk *disk, int partno)
 	part = ptbl->part[partno];
 	if (!part)
 		return;
+
+	apanic_mmc_partition_remove(part);
 
 	blk_free_devt(part_devt(part));
 	rcu_assign_pointer(ptbl->part[partno], NULL);

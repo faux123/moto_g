@@ -24,16 +24,59 @@
 #include <linux/export.h>
 #include <linux/suspend.h>
 #include <linux/syscore_ops.h>
+#include <linux/rtc.h>
 #include <trace/events/power.h>
 
 #include "power.h"
 
+static void suspend_timeout(unsigned long data);
+static DEFINE_TIMER(suspend_wd, suspend_timeout, 0, 0);
+
 const char *const pm_states[PM_SUSPEND_MAX] = {
+#ifdef CONFIG_EARLYSUSPEND
+	[PM_SUSPEND_ON]		= "on",
+#endif
 	[PM_SUSPEND_STANDBY]	= "standby",
 	[PM_SUSPEND_MEM]	= "mem",
 };
 
 static const struct platform_suspend_ops *suspend_ops;
+
+/**
+ *      suspend_timeout - suspend watchdog handler
+ *
+ *      Called when timed out in suspending.
+ *      There's not much we can do here to recover so
+ *      BUG() out for a crash-dump
+ *
+ */
+static void suspend_timeout(unsigned long data)
+{
+	struct task_struct *suspend_task = (struct task_struct *)data;
+	printk(KERN_EMERG "**** Suspend timeout\n");
+	if (suspend_task)
+		sched_show_task(suspend_task);
+	BUG();
+}
+
+/**
+ *      suspend_wdset - Sets up suspend watchdog timer.
+ *
+ */
+static void suspend_wdset(void)
+{
+	suspend_wd.data = (unsigned long)current;
+	mod_timer(&suspend_wd, jiffies + (HZ * 60));
+}
+
+/**
+ *      suspend_wdclr - clear suspend watchdog timer.
+ *
+ */
+static void suspend_wdclr(void)
+{
+	del_timer_sync(&suspend_wd);
+}
 
 /**
  * suspend_set_ops - Set the global suspend method table.
@@ -280,7 +323,9 @@ static int enter_state(suspend_state_t state)
 	printk("done.\n");
 
 	pr_debug("PM: Preparing system for %s sleep\n", pm_states[state]);
+	suspend_wdset();
 	error = suspend_prepare();
+	suspend_wdclr();
 	if (error)
 		goto Unlock;
 
@@ -294,10 +339,24 @@ static int enter_state(suspend_state_t state)
 
  Finish:
 	pr_debug("PM: Finishing wakeup.\n");
+	suspend_wdset();
 	suspend_finish();
+	suspend_wdclr();
  Unlock:
 	mutex_unlock(&pm_mutex);
 	return error;
+}
+
+static void pm_suspend_marker(char *annotation)
+{
+	struct timespec ts;
+	struct rtc_time tm;
+
+	getnstimeofday(&ts);
+	rtc_time_to_tm(ts.tv_sec, &tm);
+	pr_info("PM: suspend %s %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n",
+		annotation, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
 }
 
 /**
@@ -314,6 +373,7 @@ int pm_suspend(suspend_state_t state)
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
 
+	pm_suspend_marker("entry");
 	error = enter_state(state);
 	if (error) {
 		suspend_stats.fail++;
@@ -321,6 +381,7 @@ int pm_suspend(suspend_state_t state)
 	} else {
 		suspend_stats.success++;
 	}
+	pm_suspend_marker("exit");
 	return error;
 }
 EXPORT_SYMBOL(pm_suspend);

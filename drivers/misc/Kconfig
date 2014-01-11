@@ -10,6 +10,13 @@ config SENSORS_LIS3LV02D
 	select INPUT_POLLDEV
 	default n
 
+config SENSORS_L3G4200D
+        tristate "L3G4200D Gyroscope"
+        default n
+        depends on I2C
+        help
+          Support for the L3G4200D driver
+
 config AD525X_DPOT
 	tristate "Analog Devices Digital Potentiometers"
 	depends on (I2C || SPI) && SYSFS
@@ -334,6 +341,22 @@ config ISL29020
 	  This driver can also be built as a module.  If so, the module
 	  will be called isl29020.
 
+config VIB_TIMED
+	bool "Timed Output based Vibrator"
+	depends on ANDROID_TIMED_OUTPUT
+	default n
+
+config MOT_UTAG
+	tristate  "Motorola Configuration read/write support "
+	default n
+	help
+	  With this option you get read/write access to utag partition via procfs.
+	  Content of the entire partition can be checked, separate utags accessed
+	  and modified.
+
+	  This driver should be built as a module. The module will be called
+	  utags.ko.
+
 config SENSORS_TSL2550
 	tristate "Taos TSL2550 ambient light sensor"
 	depends on I2C && SYSFS
@@ -382,6 +405,30 @@ config HMC6352
 	  This driver provides support for the Honeywell HMC6352 compass,
 	  providing configuration and heading data via sysfs.
 
+config SENSORS_AK8975
+	tristate "AK8975 compass support"
+	default n
+	depends on I2C
+	help
+	  If you say yes here you get support for Asahi Kasei's
+	  orientation sensor AK8975.
+
+config SENSORS_MSP430
+	tristate "MSP430 Sensor Processor"
+	default n
+	depends on I2C
+	help
+	  Say yes here if you wish to include the TI
+	  MSP430 Sensor processor driver.
+
+config SENSORS_AK8963
+       tristate "AK8963 compass support"
+       default n
+       depends on I2C
+       help
+         If you say yes here you get support for Asahi Kasei's
+         orientation sensor AK8963.
+
 config EP93XX_PWM
 	tristate "EP93xx PWM support"
 	depends on ARCH_EP93XX
@@ -424,6 +471,10 @@ config TI_DAC7512
 
 	  This driver can also be built as a module. If so, the module
 	  will be called ti_dac7512.
+
+config UID_STAT
+	bool "UID based statistics tracking exported to /proc/uid_stat"
+	default n
 
 config VMWARE_BALLOON
 	tristate "VMware Balloon Driver"
@@ -498,6 +549,252 @@ config MAX8997_MUIC
 	  Maxim MAX8997 PMIC.
 	  The MAX8997 MUIC is a USB port accessory detector and switch.
 
+config WL127X_RFKILL
+	tristate "Bluetooth power control driver for TI wl127x"
+	depends on RFKILL
+	default n
+	---help---
+	 Creates an rfkill entry in sysfs for power control of Bluetooth
+	 TI wl127x chips.
+
+config APANIC_MMC
+	bool "Android kernel panic diagnostics driver on mmc"
+	default n
+	---help---
+	 Driver which handles kernel panics and attempts to write
+	 critical debugging data through mmc.
+
+config APANIC_MMC_MEMDUMP
+	bool "Android memory dump driver on mmc"
+	depends on APANIC_MMC
+	default n
+	---help---
+	 Driver which handles kernel panics and attempts to write
+	 full memory dump through mmc.
+
+config APANIC_PLABEL
+	string "Android panic dump flash partition label"
+	depends on APANIC_MMC
+	default "kpanic"
+	---help---
+	 If your platform uses a different flash partition label for storing
+ 	 crashdumps, enter it here.
+
+config TSIF
+	depends on ARCH_MSM8X60 || ARCH_MSM8960 || ARCH_APQ8064
+	tristate "TSIF (Transport Stream InterFace) support"
+	default n
+	---help---
+	  This driver supports low level TSIF interface. It provides API
+	  for upper layer drivers. If you have a TSIF hardware, say
+	  Y here and read <file:Documentation/arm/msm/tsif.txt>.
+
+	  To compile this driver as module, choose M here: the
+	  module will be called msm_tsif.
+
+config TSIF_CHRDEV
+	tristate "TSIF character device"
+	depends on TSIF
+	default n
+	---help---
+	  This driver uses low level TSIF interface. It provides character
+	  device useable from user space programs: one can read TSIF stream
+	  from this device.
+
+	  This driver may be used as example for TSIF API usage.
+
+	  To compile this driver as module, choose M here: the
+	  module will be called tsif_chrdev.
+
+config TSIF_DEBUG
+	bool "Turn on debugging information for tsif driver"
+	depends on TSIF
+	default n
+	---help---
+	  This turns on debugging information for the tsif driver
+
+config TSPP
+	depends on ARCH_MSM
+	tristate "TSPP (Transport Stream Packet Processor) Support"
+	---help---
+	Transport Stream Packet Processor is used to offload the
+	processing of MPEG transport streams from the main processor.
+	This can also be compiled as a loadable module.
+
+config CI_BRIDGE_SPI
+	depends on SPI_QUP
+	tristate "CI Bridge SPI Driver Support"
+	---help---
+	This driver provides a simple SPI read/write interface to
+	an external CI bridge. It implements a character device
+	driver interface which allows making SPI transactions
+	using the Linux SPI framework.
+
+	To compile this driver as module, choose M here.
+
+config HAPTIC_ISA1200
+	tristate "ISA1200 haptic support"
+	depends on I2C
+	default n
+	help
+	  The ISA1200 is a high performance enhanced haptic driver.
+
+config PMIC8058_PWM
+	tristate "Qualcomm PM8058 PWM support"
+	depends on PMIC8058
+	default y
+	help
+	  This option enables device driver support for the PWM channels
+	  on Qualcomm PM8058 chip. Pulse Width Modulation is used for
+	  purposes including software controlled brightness of backlight,
+	  motor control, and waveform generation.
+
+config PMIC8XXX_VIBRATOR
+	tristate "Qualcomm Vibrator support for PMIC8XXX"
+	depends on MFD_PM8XXX && ANDROID_TIMED_OUTPUT
+	help
+	  This option enables device driver support for the vibrator
+	  on the PM8XXX chips. The vibrator is controlled using the
+	  timed output class.
+
+config PMIC8XXX_NFC
+	tristate "Qualcomm PM8XXX support for Near Field Communication"
+	depends on MFD_PM8XXX
+	help
+	  Qualcomm PM8XXX chips have a module to support NFC (Near Field
+	  Communication). This option enables the driver to support it.
+
+config PMIC8XXX_UPL
+	tristate "Qualcomm PM8XXX support for User Programmable Logic"
+	depends on MFD_PM8XXX
+	help
+	  This option enables device driver support for User Programmable Logic
+	  on Qualcomm PM8XXX chips. The UPL module provides a means to implement
+	  simple truth table based logic via a set of control registers. I/O may
+	  be routed in and out of the UPL module via GPIO or DTEST pins.
+
+config PMIC8058_XOADC
+	tristate "Qualcomm PM8058 XOADC driver"
+	depends on PMIC8058
+	default n
+	help
+	  Enables User processor ADC reads over the XOADC module of Qualcomm's
+	  PMIC8058. Driver interface to program registers of the ADC over
+	  AMUX channels, devices on programmable MPP's and xotherm.
+
+config QSEECOM
+	tristate "Qualcomm Secure Execution Communicator driver"
+	help
+	  Provides a communication interface between userspace and
+	  Qualcomm Secure Execution Environment (QSEE) using Secure Channel
+	  Manager (SCM) interface.
+
+config QFP_FUSE
+	tristate "QFPROM Fuse Read/Write support"
+	help
+	  This option enables device driver to read/write QFPROM
+	  fuses. The ioctls provides the necessary interface
+	  to the fuse block. Currently this is supported only
+	  on FSM targets.
+
+config QPNP_MISC
+	tristate "QPNP Misc Peripheral"
+	depends on SPMI
+	help
+	  Say 'y' here to include support for the Qualcomm QPNP MISC
+	  peripheral. The MISC peripheral holds the USB ID interrupt
+	  and the driver provides an API to check if this interrupt
+	  is available on the current PMIC chip.
+
+config USB_HSIC_SMSC_HUB
+	tristate "Support for HSIC based MSM on-chip SMSC3503 HUB"
+	depends on USB_EHCI_MSM_HSIC
+	help
+	  Enables support for the HSIC (High Speed Inter-Chip) based
+	  SMSC3503 hub controller present on the Qualcomm chipsets.
+
+	  This adds support for connecting devices like mouse in HSIC
+	  Host mode.
+
+config TI_DRV2667
+	tristate "TI's DRV2667 haptic controller support"
+	depends on I2C
+	help
+	  The DRV2667 is a piezo haptic controller chip. It can drive
+	  piezo haptics either in digital mode or analog mode. This chip
+	  can be used in variety of devices to provide haptic support.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ti_drv2667.
+
+config HAPTIC_DRV2605
+	tristate "TI DRV2605 haptic driver"
+	depends on I2C && SYSFS
+	help
+	  If you say yes here you get support for the TI DRV2605
+	  haptic driver.
+
+
+config MMI_FACTORY
+	tristate "Motorola Mobility Factory driver"
+	depends on OF
+	help
+	  This option enables a device driver that is collects many
+	  of the extensions needed by the Motorola factory.  If you
+	  aren't literally building a Motorola Device you can safely
+	  say no here.
+	default n
+
+config C55_CTRL
+	tristate "TI C55 Control driver"
+	help
+	  This option enables device driver to control the TI C55 IC. This
+	  is intended to be a simple driver which only exports the GPIOs
+	  for user space use.
+
+config ALSA_TO_H2W
+	tristate "ALSA to H2W wired headset detection converter"
+	help
+	  This option enables a device driver that attach to the input queue and
+	  and exposes EV_SW events SW_HEADPHONE_INSERT & SW_MICROPHONE_INSERT in
+	  /sys/class/switch/h2w/state used by Android headset observer.
+	default n
+
+config HOB_SHARED_RAM
+	tristate "HOB RAM MMAP Client"
+	depends on OF
+	help
+	  Provide mechanism to access hob storage shared memory on apps
+	  processor. HOB - or the Hand Over Block - is the staging area for
+	  phasing data.
+	default n
+
+config DROPBOX
+	tristate "Dropbox sysfs support"
+	default y
+	help
+	  This option enables a sysfs interface for drivers to send text or
+	  binary events to the Android dropbox. A lightweight userspace daemon
+	  polls the sysfs files and copies the data into dropbox using the built
+	  in dropbox manager service.  This enables fast and simple logging of
+	  various critical events from kernel drivers.
+
+config USR_RESET_WARNING
+	tristate "User reset warning driver"
+	help
+	  This option enables a device driver that monitors user reset warning
+	  GPIO.If the driver receives the warning it calls kernel_halt to notify
+	  drivers registered for the reboot notification about incoming HW reset.
+	default n
+
+config SENSORS_LIS3DH_MOT
+	tristate "LIS3DH_MOT Accelerometer"
+	default n
+	depends on I2C
+	help
+	 Say yes here if you wish to include the ST Micro
+	 LIS3DH Mot accelerometer driver.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -506,4 +803,9 @@ source "drivers/misc/ti-st/Kconfig"
 source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
+source "drivers/misc/sec/Kconfig"
+source "drivers/misc/capsense_prog/Kconfig"
+source "drivers/misc/stm401/Kconfig"
+
 endmenu
+

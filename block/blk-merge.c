@@ -42,6 +42,9 @@ static unsigned int __blk_recalc_rq_segments(struct request_queue *q,
 					goto new_segment;
 				if (!BIOVEC_SEG_BOUNDARY(q, bvprv, bv))
 					goto new_segment;
+				if ((bvprv->bv_page != bv->bv_page) &&
+				    (bvprv->bv_page + 1) != bv->bv_page)
+					goto new_segment;
 
 				seg_size += bv->bv_len;
 				bvprv = bv;
@@ -140,6 +143,9 @@ int blk_rq_map_sg(struct request_queue *q, struct request *rq,
 			if (!BIOVEC_PHYS_MERGEABLE(bvprv, bvec))
 				goto new_segment;
 			if (!BIOVEC_SEG_BOUNDARY(q, bvprv, bvec))
+				goto new_segment;
+			if ((bvprv->bv_page != bvec->bv_page) &&
+			    ((bvprv->bv_page + 1) != bvec->bv_page))
 				goto new_segment;
 
 			sg->length += nbytes;
@@ -380,6 +386,12 @@ static int attempt_merge(struct request_queue *q, struct request *req,
 	 * Don't merge discard requests and secure discard requests
 	 */
 	if ((req->cmd_flags & REQ_SECURE) != (next->cmd_flags & REQ_SECURE))
+		return 0;
+
+	/*
+	 * Don't merge file system requests and sanitize requests
+	 */
+	if ((req->cmd_flags & REQ_SANITIZE) != (next->cmd_flags & REQ_SANITIZE))
 		return 0;
 
 	/*

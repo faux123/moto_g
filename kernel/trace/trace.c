@@ -11,6 +11,7 @@
  *  Copyright (C) 2004-2006 Ingo Molnar
  *  Copyright (C) 2004 William Lee Irwin III
  */
+#define REALLY_WANT_DEBUGFS
 #include <linux/ring_buffer.h>
 #include <generated/utsrelease.h>
 #include <linux/stacktrace.h>
@@ -38,6 +39,7 @@
 #include <linux/poll.h>
 #include <linux/nmi.h>
 #include <linux/fs.h>
+#include <linux/coresight-stm.h>
 
 #include "trace.h"
 #include "trace_output.h"
@@ -236,7 +238,7 @@ int tracing_is_enabled(void)
  * to not have to wait for all that output. Anyway this can be
  * boot time and run time configurable.
  */
-#define TRACE_BUF_SIZE_DEFAULT	1441792UL /* 16384 * 88 (sizeof(entry)) */
+#define TRACE_BUF_SIZE_DEFAULT	262144UL /* 1024 * 256 */
 
 static unsigned long		trace_buf_size = TRACE_BUF_SIZE_DEFAULT;
 
@@ -383,7 +385,7 @@ EXPORT_SYMBOL_GPL(tracing_on);
 void tracing_off(void)
 {
 	if (global_trace.buffer)
-		ring_buffer_record_on(global_trace.buffer);
+		ring_buffer_record_off(global_trace.buffer);
 	/*
 	 * This flag is only looked at when buffers haven't been
 	 * allocated yet. We don't really care about the race
@@ -1629,6 +1631,7 @@ int trace_array_vprintk(struct trace_array *tr,
 	memcpy(&entry->buf, trace_buf, len);
 	entry->buf[len] = '\0';
 	if (!filter_check_discard(call, entry, buffer, event)) {
+		stm_log(OST_ENTITY_TRACE_PRINTK, entry->buf, len + 1);
 		ring_buffer_unlock_commit(buffer, event);
 		ftrace_trace_stack(buffer, irq_flags, 6, pc);
 	}
@@ -3022,8 +3025,14 @@ static int __tracing_resize_ring_buffer(unsigned long size)
 	max_tr.entries = size;
  out:
 	global_trace.entries = size;
+	trace_buf_size = size;
 
 	return ret;
+}
+
+unsigned long tracing_get_trace_buf_size(void)
+{
+	return trace_buf_size;
 }
 
 static ssize_t tracing_resize_ring_buffer(unsigned long size)
@@ -3752,7 +3761,7 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 	int nr_pages = 1;
 	ssize_t written;
 	void *page1;
-	void *page2;
+	void *page2 = NULL;
 	int offset;
 	int size;
 	int len;
@@ -3823,9 +3832,11 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 	if (entry->buf[cnt - 1] != '\n') {
 		entry->buf[cnt] = '\n';
 		entry->buf[cnt + 1] = '\0';
-	} else
+		stm_log(OST_ENTITY_TRACE_MARKER, entry->buf, cnt + 2);
+	} else {
 		entry->buf[cnt] = '\0';
-
+		stm_log(OST_ENTITY_TRACE_MARKER, entry->buf, cnt + 1);
+	}
 	ring_buffer_unlock_commit(buffer, event);
 
 	written = cnt;

@@ -20,10 +20,10 @@
 #include <linux/io.h>
 #include <linux/list.h>
 #include <linux/memblock.h>
+#include <linux/persistent_ram.h>
 #include <linux/rslib.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
-#include "persistent_ram.h"
 
 struct persistent_ram_buffer {
 	uint32_t    sig;
@@ -34,7 +34,7 @@ struct persistent_ram_buffer {
 
 #define PERSISTENT_RAM_SIG (0x43474244) /* DBGC */
 
-static __initdata LIST_HEAD(persistent_ram_list);
+static __devinitdata LIST_HEAD(persistent_ram_list);
 
 static inline size_t buffer_size(struct persistent_ram_zone *prz)
 {
@@ -190,7 +190,7 @@ static void persistent_ram_ecc_old(struct persistent_ram_zone *prz)
 }
 
 static int persistent_ram_init_ecc(struct persistent_ram_zone *prz,
-	size_t buffer_size)
+	size_t buffer_size, struct persistent_ram *ram)
 {
 	int numerr;
 	struct persistent_ram_buffer *buffer = prz->buffer;
@@ -199,12 +199,13 @@ static int persistent_ram_init_ecc(struct persistent_ram_zone *prz,
 	if (!prz->ecc)
 		return 0;
 
-	prz->ecc_block_size = 128;
-	prz->ecc_size = 16;
-	prz->ecc_symsize = 8;
-	prz->ecc_poly = 0x11d;
+	prz->ecc_block_size = ram->ecc_block_size ?: 128;
+	prz->ecc_size = ram->ecc_size ?: 16;
+	prz->ecc_symsize = ram->ecc_symsize ?: 8;
+	prz->ecc_poly = ram->ecc_poly ?: 0x11d;
 
-	ecc_blocks = DIV_ROUND_UP(prz->buffer_size, prz->ecc_block_size);
+	ecc_blocks = DIV_ROUND_UP(prz->buffer_size - prz->ecc_size,
+				  prz->ecc_block_size + prz->ecc_size);
 	prz->buffer_size -= (ecc_blocks + 1) * prz->ecc_size;
 
 	if (prz->buffer_size > buffer_size) {
@@ -266,7 +267,145 @@ static void notrace persistent_ram_update(struct persistent_ram_zone *prz,
 	persistent_ram_update_ecc(prz, start, count);
 }
 
-static void __init
+#ifdef CONFIG_ANDROID_PERSISTENT_RAM_EXT_BUF
+struct persistent_ram_ext_buf {
+	struct list_head list;
+	int size, space;
+	char data[];
+};
+
+struct persistent_ram_ext_buffer {
+	spinlock_t lock;	/* protect list and buf */
+	struct list_head list;
+	struct persistent_ram_ext_buf *buf;
+	int total_size;
+	int stop;
+} rs_ext_buf = {
+	.lock	= __SPIN_LOCK_UNLOCKED(rs_ext_buf.lock),
+	.list	= LIST_HEAD_INIT(rs_ext_buf.list),
+};
+
+int persistent_ram_ext_oldbuf_print(const char *fmt, ...)
+{
+	va_list args;
+	unsigned long flags;
+	int len = 0;
+	char line_buf[512];
+	struct persistent_ram_ext_buf *buf;
+
+	va_start(args, fmt);
+	len += vsnprintf(line_buf + len, sizeof(line_buf) - len, fmt, args);
+	va_end(args);
+
+	spin_lock_irqsave(&rs_ext_buf.lock, flags);
+	if (rs_ext_buf.stop) {
+		spin_unlock_irqrestore(&rs_ext_buf.lock, flags);
+		pr_err("%s() called too late by %pf()\n", __func__,
+				__builtin_return_address(0));
+		return 0;
+	}
+
+	while (1) {
+		if (!rs_ext_buf.buf) {
+			buf = (struct persistent_ram_ext_buf *)
+				__get_free_page(GFP_ATOMIC);
+			if (buf) {
+				buf->size = 0;
+				buf->space = PAGE_SIZE - 1 -
+					offsetof(struct persistent_ram_ext_buf,
+							data);
+				rs_ext_buf.buf = buf;
+			} else {
+				pr_err("%s NOMEM\n", __func__);
+				len = 0;
+				break;
+			}
+		}
+		buf = rs_ext_buf.buf;
+		if (len + 1 > buf->space) {
+			buf->data[buf->size] = '\0';
+			list_add_tail(&buf->list, &rs_ext_buf.list);
+			rs_ext_buf.total_size += buf->size;
+			rs_ext_buf.buf = NULL;
+			continue;
+		}
+		memcpy(&buf->data[buf->size], line_buf, len);
+		buf->space -= len;
+		buf->size += len;
+		break;
+	}
+	spin_unlock_irqrestore(&rs_ext_buf.lock, flags);
+	return len;
+}
+
+static int persistent_ram_ext_oldbuf_print_stop(void)
+{
+	int ret;
+	unsigned long flags;
+	struct persistent_ram_ext_buf *buf;
+	spin_lock_irqsave(&rs_ext_buf.lock, flags);
+	rs_ext_buf.stop = 1;
+	if (rs_ext_buf.buf) {
+		buf = rs_ext_buf.buf;
+		rs_ext_buf.buf = NULL;
+		buf->data[buf->size] = '\0';
+		list_add_tail(&buf->list, &rs_ext_buf.list);
+		rs_ext_buf.total_size += buf->size;
+	}
+	ret = rs_ext_buf.total_size;
+	spin_unlock_irqrestore(&rs_ext_buf.lock, flags);
+	return ret;
+}
+
+static void persistent_ram_ext_oldbuf_push(char *ptr)
+{
+	unsigned long flags;
+	struct persistent_ram_ext_buf *buf, *n;
+
+	spin_lock_irqsave(&rs_ext_buf.lock, flags);
+	list_for_each_entry_safe(buf, n, &rs_ext_buf.list, list) {
+		if (ptr) {
+			memcpy(ptr, buf->data, buf->size);
+			ptr += buf->size;
+		}
+		list_del(&buf->list);
+		free_page((unsigned long)buf);
+	}
+	spin_unlock_irqrestore(&rs_ext_buf.lock, flags);
+}
+
+void persistent_ram_ext_oldbuf_merge(struct persistent_ram_zone *prz)
+{
+	size_t ext_size;
+	char *old_log2;
+
+	ext_size = persistent_ram_ext_oldbuf_print_stop();
+	if (ext_size) {
+		if (!prz || !prz->old_log_size) {
+			persistent_ram_ext_oldbuf_push(NULL);
+			pr_info("persistent_ram: discarded ext buf size %zu\n",
+				ext_size);
+			return;
+		}
+		old_log2 = krealloc(prz->old_log,
+				prz->old_log_size + ext_size, GFP_KERNEL);
+		if (old_log2) {
+			persistent_ram_ext_oldbuf_push(old_log2 +
+				prz->old_log_size);
+			prz->old_log = old_log2;
+			prz->old_log_size += ext_size;
+			pr_info("persistent_ram: merged ext buf size %zu\n",
+				ext_size);
+		} else {
+			pr_err("persistent_ram: cannot merge ext buf size %zu\n",
+				ext_size);
+			persistent_ram_ext_oldbuf_push(NULL);
+		}
+	}
+}
+#endif
+
+static void __devinit
 persistent_ram_save_old(struct persistent_ram_zone *prz)
 {
 	struct persistent_ram_buffer *buffer = prz->buffer;
@@ -373,8 +512,8 @@ static int persistent_ram_buffer_map(phys_addr_t start, phys_addr_t size,
 	return 0;
 }
 
-static int __init persistent_ram_buffer_init(const char *name,
-		struct persistent_ram_zone *prz)
+static int __devinit persistent_ram_buffer_init(const char *name,
+		struct persistent_ram_zone *prz, struct persistent_ram **ramp)
 {
 	int i;
 	struct persistent_ram *ram;
@@ -385,9 +524,11 @@ static int __init persistent_ram_buffer_init(const char *name,
 		start = ram->start;
 		for (i = 0; i < ram->num_descs; i++) {
 			desc = &ram->descs[i];
-			if (!strcmp(desc->name, name))
+			if (!strcmp(desc->name, name)) {
+				*ramp = ram;
 				return persistent_ram_buffer_map(start,
 						desc->size, prz);
+			}
 			start += desc->size;
 		}
 	}
@@ -395,9 +536,10 @@ static int __init persistent_ram_buffer_init(const char *name,
 	return -EINVAL;
 }
 
-static  __init
+static  __devinit
 struct persistent_ram_zone *__persistent_ram_init(struct device *dev, bool ecc)
 {
+	struct persistent_ram *ram;
 	struct persistent_ram_zone *prz;
 	int ret = -ENOMEM;
 
@@ -409,14 +551,14 @@ struct persistent_ram_zone *__persistent_ram_init(struct device *dev, bool ecc)
 
 	INIT_LIST_HEAD(&prz->node);
 
-	ret = persistent_ram_buffer_init(dev_name(dev), prz);
+	ret = persistent_ram_buffer_init(dev_name(dev), prz, &ram);
 	if (ret) {
 		pr_err("persistent_ram: failed to initialize buffer\n");
 		goto err;
 	}
 
 	prz->ecc = ecc;
-	ret = persistent_ram_init_ecc(prz, prz->buffer_size);
+	ret = persistent_ram_init_ecc(prz, prz->buffer_size, ram);
 	if (ret)
 		goto err;
 
@@ -424,11 +566,11 @@ struct persistent_ram_zone *__persistent_ram_init(struct device *dev, bool ecc)
 		if (buffer_size(prz) > prz->buffer_size ||
 		    buffer_start(prz) > buffer_size(prz))
 			pr_info("persistent_ram: found existing invalid buffer,"
-				" size %ld, start %ld\n",
+				" size %zu, start %zu\n",
 			       buffer_size(prz), buffer_start(prz));
 		else {
 			pr_info("persistent_ram: found existing buffer,"
-				" size %ld, start %ld\n",
+				" size %zu, start %zu\n",
 			       buffer_size(prz), buffer_start(prz));
 			persistent_ram_save_old(prz);
 		}
@@ -447,10 +589,18 @@ err:
 	return ERR_PTR(ret);
 }
 
-struct persistent_ram_zone * __init
+struct persistent_ram_zone * __devinit
 persistent_ram_init_ringbuffer(struct device *dev, bool ecc)
 {
 	return __persistent_ram_init(dev, ecc);
+}
+
+void __devinit persistent_ram_add(struct persistent_ram *ram)
+{
+	list_add_tail(&ram->node, &persistent_ram_list);
+
+	pr_info("Initialized persistent memory from %08lx-%08lx\n",
+		(long)ram->start, (long)(ram->start + ram->size - 1));
 }
 
 int __init persistent_ram_early_init(struct persistent_ram *ram)
@@ -464,10 +614,7 @@ int __init persistent_ram_early_init(struct persistent_ram *ram)
 		return ret;
 	}
 
-	list_add_tail(&ram->node, &persistent_ram_list);
-
-	pr_info("Initialized persistent memory from %08lx-%08lx\n",
-		(long)ram->start, (long)(ram->start + ram->size - 1));
+	persistent_ram_add(ram);
 
 	return 0;
 }

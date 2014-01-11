@@ -17,6 +17,8 @@
 #include <linux/gfp.h>
 #include <linux/suspend.h>
 
+#include <trace/events/sched.h>
+
 #ifdef CONFIG_SMP
 /* Serializes the updates to cpu_online_mask, cpu_present_mask */
 static DEFINE_MUTEX(cpu_add_remove_lock);
@@ -264,6 +266,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 
 out_release:
 	cpu_hotplug_done();
+	trace_sched_cpu_hotplug(cpu, err, 0);
 	if (!err)
 		cpu_notify_nofail(CPU_POST_DEAD | mod, hcpu);
 	return err;
@@ -321,6 +324,7 @@ out_notify:
 	if (ret != 0)
 		__cpu_notify(CPU_UP_CANCELED | mod, hcpu, nr_calls, NULL);
 	cpu_hotplug_done();
+	trace_sched_cpu_hotplug(cpu, ret, 1);
 
 	return ret;
 }
@@ -668,3 +672,23 @@ void init_cpu_online(const struct cpumask *src)
 {
 	cpumask_copy(to_cpumask(cpu_online_bits), src);
 }
+
+static ATOMIC_NOTIFIER_HEAD(idle_notifier);
+
+void idle_notifier_register(struct notifier_block *n)
+{
+	atomic_notifier_chain_register(&idle_notifier, n);
+}
+EXPORT_SYMBOL_GPL(idle_notifier_register);
+
+void idle_notifier_unregister(struct notifier_block *n)
+{
+	atomic_notifier_chain_unregister(&idle_notifier, n);
+}
+EXPORT_SYMBOL_GPL(idle_notifier_unregister);
+
+void idle_notifier_call_chain(unsigned long val)
+{
+	atomic_notifier_call_chain(&idle_notifier, val, NULL);
+}
+EXPORT_SYMBOL_GPL(idle_notifier_call_chain);

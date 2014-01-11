@@ -486,7 +486,7 @@ do {									\
 		  __attribute__((section("__trace_printk_fmt"))) =	\
 			__builtin_constant_p(fmt) ? fmt : NULL;		\
 									\
-		__trace_bprintk(_THIS_IP_, trace_printk_fmt, ##args);	\
+		__trace_printk(_THIS_IP_, trace_printk_fmt, ##args);	\
 	} else								\
 		__trace_printk(_THIS_IP_, fmt, ##args);		\
 } while (0)
@@ -523,6 +523,8 @@ extern int
 __ftrace_vprintk(unsigned long ip, const char *fmt, va_list ap);
 
 extern void ftrace_dump(enum ftrace_dump_mode oops_dump_mode);
+
+extern unsigned long tracing_get_trace_buf_size(void);
 #else
 static inline __printf(1, 2)
 int trace_printk(const char *fmt, ...);
@@ -547,6 +549,10 @@ ftrace_vprintk(const char *fmt, va_list ap)
 	return 0;
 }
 static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
+static inline  unsigned long tracing_get_trace_buf_size(void)
+{
+	return 0;
+}
 #endif /* CONFIG_TRACING */
 
 /*
@@ -704,6 +710,9 @@ static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
 #endif
 
 extern int do_sysinfo(struct sysinfo *info);
+
+/* To identify board information in panic logs, set this */
+extern char *mach_panic_string;
 
 #endif /* __KERNEL__ */
 

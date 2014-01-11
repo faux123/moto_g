@@ -584,7 +584,8 @@ static inline void
 debug_activate(struct timer_list *timer, unsigned long expires)
 {
 	debug_timer_activate(timer);
-	trace_timer_start(timer, expires);
+	trace_timer_start(timer, expires,
+			 tbase_get_deferrable(timer->base) > 0 ? 'y' : 'n');
 }
 
 static inline void debug_deactivate(struct timer_list *timer)
@@ -1678,12 +1679,12 @@ static int __cpuinit init_timers_cpu(int cpu)
 			boot_done = 1;
 			base = &boot_tvec_bases;
 		}
+		spin_lock_init(&base->lock);
 		tvec_base_done[cpu] = 1;
 	} else {
 		base = per_cpu(tvec_bases, cpu);
 	}
 
-	spin_lock_init(&base->lock);
 
 	for (j = 0; j < TVN_SIZE; j++) {
 		INIT_LIST_HEAD(base->tv5.vec + j);
