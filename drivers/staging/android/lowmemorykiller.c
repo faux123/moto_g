@@ -42,6 +42,9 @@
 #include <linux/delay.h>
 #include <linux/swap.h>
 #include <linux/fs.h>
+#if defined (CONFIG_SWAP) && (defined (CONFIG_ZSWAP) || defined (CONFIG_ZRAM))
+#include <linux/fs.h>
+#endif
 
 #include <trace/events/memkill.h>
 
@@ -299,7 +302,8 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	other_free = global_page_state(NR_FREE_PAGES) + (si.freeswap >> 1);
 	other_file = global_page_state(NR_FILE_PAGES) -
 						global_page_state(NR_SHMEM) +
-						(si.totalswap >> 1);
+						(si.totalswap >> 3) -
+						total_swapcache_pages;
 #else
 	other_free = global_page_state(NR_FREE_PAGES);
 
