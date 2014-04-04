@@ -3168,4 +3168,11 @@ config PM_DEBUG_WAKEUP
     default n
     bool "Report wakeup source in a uevent"
 
+config LCD_KCAL
+	depends on ARCH_MSM
+	default y
+	bool "LG's LCD calibration code"
+	help
+	  Provides LCD calibration capability
+
 endif
