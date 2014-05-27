@@ -1931,12 +1931,6 @@ config MSM_CPU_FREQ_MIN
 
 endif # CPU_FREQ_MSM
 
-config CPU_OVERCLOCK
-	bool "enable CPU overclocking of Cortex A7"
-	default n
-	help
-	  Simple CPU Overclocking Option to 1.6 GHz
-
 config INTELLI_PLUG
 	bool "Enable intelli-plug cpu hotplug driver"
 	default n

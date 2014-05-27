@@ -357,11 +357,7 @@ static struct clkctl_acpu_speed *__init select_freq_plan(void)
 			 bin.speed);
 	}
 
-#ifdef CONFIG_CPU_OVERCLOCK
-	return priv->pvs_tables[1];
-#else
 	return priv->pvs_tables[bin.speed];
-#endif
 }
 
 int __init acpuclk_cortex_init(struct platform_device *pdev,
