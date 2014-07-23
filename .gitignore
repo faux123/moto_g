@@ -84,3 +84,6 @@ GTAGS
 *.orig
 *~
 \#*#
+
+#add user ignores:
+out/
