@@ -87,3 +87,8 @@ GTAGS
 
 #add user ignores:
 out/
+arch/arm/mach-msm/smd_rpc_sym.c
+mkwlan.sh
+mkzip.sh
+ramfs/
+
