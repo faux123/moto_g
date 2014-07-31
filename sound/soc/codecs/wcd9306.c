@@ -5847,6 +5847,8 @@ struct snd_kcontrol_new *gpl_faux_snd_controls_ptr =
 		(struct snd_kcontrol_new *)tapan_common_snd_controls;
 struct snd_soc_codec *fauxsound_codec_ptr;
 EXPORT_SYMBOL(fauxsound_codec_ptr);
+int wcd9xxx_hw_revision;
+EXPORT_SYMBOL(wcd9xxx_hw_revision);
 #endif
 
 static int tapan_codec_probe(struct snd_soc_codec *codec)
@@ -5869,6 +5871,12 @@ static int tapan_codec_probe(struct snd_soc_codec *codec)
 	codec->control_data = dev_get_drvdata(codec->dev->parent);
 	control = codec->control_data;
 
+#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
+	if (TAPAN_IS_1_0(control->version))
+		wcd9xxx_hw_revision = 1;
+	else
+		wcd9xxx_hw_revision = 2;
+#endif
 	wcd9xxx_ssr_register(control, tapan_device_down,
 			     tapan_post_reset_cb, (void *)codec);
 
